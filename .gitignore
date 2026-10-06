@@ -8,3 +8,7 @@ mail_cache.json
 unsubscribe_log.json
 .env
 .streamlit/secrets.toml
+gmail_credentials.json
+credentials.json
+client_secret*.json
+token*.json

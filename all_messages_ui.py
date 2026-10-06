@@ -5,6 +5,7 @@ import re
 import pandas as pd
 import streamlit as st
 import mail_service as service
+import mail_provider
 from all_messages import browse, action_preview
 
 
@@ -37,13 +38,13 @@ def change_selection(uid, key):
         chosen.add(uid)
     else:
         chosen.discard(uid)
-    ss.inbox_selected = sorted(chosen, key=int)
+    ss.inbox_selected = sorted(chosen, key=service.uid_key)
     reset_confirmation()
 
 
 def select_page(uids):
     ss = st.session_state
-    ss.inbox_selected = sorted(set(ss.get("inbox_selected", [])) | set(uids), key=int)
+    ss.inbox_selected = sorted(set(ss.get("inbox_selected", [])) | set(uids), key=service.uid_key)
     reset_confirmation()
 
 
@@ -108,7 +109,7 @@ def change_group_selection(uids, key):
     ss = st.session_state
     selected = set(ss.get("inbox_selected", []))
     selected = selected | set(uids) if ss[key] else selected - set(uids)
-    ss.inbox_selected = sorted(selected, key=int)
+    ss.inbox_selected = sorted(selected, key=service.uid_key)
     reset_confirmation()
 
 
@@ -154,7 +155,7 @@ def render(store, start, T, date, show_error):
     ):
         close_reader()
         reset_confirmation()
-        start("scan", service.scan, store, ss.password, 0)
+        start("scan", mail_provider.scan, store, ss.password, 0)
     if undo.button(
         T("Вернуть последнее удаление", "Undo last deletion"),
         key="inbox_undo",
@@ -163,7 +164,7 @@ def render(store, start, T, date, show_error):
     ):
         close_reader()
         reset_confirmation()
-        start("undo", service.undo, store, ss.password)
+        start("undo", mail_provider.undo, store, ss.password)
     if not scan:
         st.info(
             T(
@@ -402,7 +403,7 @@ def render(store, start, T, date, show_error):
             ):
                 start(
                     "read",
-                    service.read_message,
+                    mail_provider.read_message,
                     store,
                     ss.password,
                     scan["validity"],
@@ -478,6 +479,8 @@ def render(store, start, T, date, show_error):
                     args=(m["uid"],),
                     help=label,
                 )
+                if m.get("snippet"):
+                    cols[1].caption(m["snippet"][:120])
                 cols[2].text(m["name"] or m["sender"])
                 if m["name"]:
                     cols[2].caption(m["sender"])

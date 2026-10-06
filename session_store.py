@@ -2,7 +2,7 @@
 
 Security model: the browser holds only a random token in a session cookie. The
 token is meaningless without this process's memory: the account and the
-app-specific password stay here and never leave the server (no disk, database,
+app-specific password or Gmail OAuth credential stay here and never leave the server (no disk, database,
 logs or URLs). Restarting the server forgets every entry, and an entry unused
 for IDLE_TIMEOUT seconds expires.
 """

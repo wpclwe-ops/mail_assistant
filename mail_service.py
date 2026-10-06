@@ -23,6 +23,15 @@ from mail_helpers import (
 )
 
 
+def uid_key(uid):
+    """Comparable opaque identifiers: decimal IMAP UIDs or hexadecimal Gmail IDs."""
+    text = str(uid)
+    try:
+        return int(text, 10) if text.isdecimal() else int(text, 16)
+    except ValueError:
+        return int.from_bytes(text.encode("utf-8"), "big")
+
+
 class MailError(Exception):
     pass
 
@@ -225,7 +234,7 @@ def companies(store):
 def unsubscribe_targets(messages):
     """Keep separate List-IDs; use one-click URL and its flag from the same message."""
     targets = {}
-    for msg in sorted(messages, key=lambda x: (x["received"], int(x["uid"]))):
+    for msg in sorted(messages, key=lambda x: (x["received"], uid_key(x["uid"]))):
         if msg["urls"]:
             key = (msg["sender"], msg["list_id"] or "")
             targets[key] = msg
@@ -258,7 +267,7 @@ def prepare(store, password, keys, mode, scope, allow_white, read_filter, progre
             progress("prepare", i + 1, len(senders))
         messages = [
             x
-            for x in fetch(m, sorted(uids, key=int), progress)
+            for x in fetch(m, sorted(uids, key=uid_key), progress)
             if x["sender"] in senders and matches_read_filter(x, read_filter)
         ]
     targets = [

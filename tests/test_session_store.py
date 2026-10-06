@@ -82,6 +82,7 @@ class SessionRestoreUITests(unittest.TestCase):
 
     def sign_in(self):
         at = self.run_app()
+        at.selectbox(key="login_provider").set_value("icloud").run()
         at.text_input[0].input("test@icloud.com")
         at.text_input[1].input("password-only-in-memory").run()
         next(b for b in at.button if b.label == "Подключиться к iCloud").click().run()
@@ -108,18 +109,18 @@ class SessionRestoreUITests(unittest.TestCase):
     def test_invalid_cookie_shows_login_and_clears_cookie(self):
         at = self.run_app({COOKIE: "forged"})
         self.assertNotIn("account", at.session_state)
-        self.assertEqual(len(at.text_input), 2)
+        self.assertEqual(len(at.text_input), 0)
         self.assertIn("Max-Age=0", self.cookie_scripts(at)[0])
 
     def test_sign_out_revokes_token(self):
         at = self.sign_in()
         token = at.session_state["session_token"]
         at.button(key="signout").click().run()
-        self.assertEqual(len(at.text_input), 2)
+        self.assertEqual(len(at.text_input), 0)
         self.assertIn("Max-Age=0", self.cookie_scripts(at)[0])
         again = self.run_app({COOKIE: token})
         self.assertNotIn("account", again.session_state)
-        self.assertEqual(len(again.text_input), 2)
+        self.assertEqual(len(again.text_input), 0)
 
 
 if __name__ == "__main__":

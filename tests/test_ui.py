@@ -40,9 +40,10 @@ class UITests(unittest.TestCase):
 
     def test_login_screen_and_languages(self):
         at = self.app(False)
+        at.selectbox(key="login_provider").set_value("icloud").run()
         self.assertEqual(len(at.text_input), 2)
         self.assertTrue(self.button(at, "Подключиться к iCloud").disabled)
-        at.selectbox[0].set_value("English").run()
+        at.selectbox(key="language").set_value("English").run()
         self.assertFalse(at.exception)
         self.assertTrue(self.button(at, "Connect to iCloud").disabled)
         self.assertEqual(storage.Store().get("language"), "English")
@@ -215,6 +216,7 @@ class UITests(unittest.TestCase):
 
         with patch.object(svc, "connection", conn):
             at = self.app(False)
+            at.selectbox(key="login_provider").set_value("icloud").run()
             at.text_input[0].input("test@icloud.com")
             at.text_input[1].input("password-only-in-memory").run()
             self.button(at, "Подключиться к iCloud").click().run()
