@@ -1,18 +1,12 @@
-# iCloud Mail Assistant · v3.6.0-test
+# Mail Assistant · v3.7.0-test
+
+## Gmail test build
+
+Branch: **test/gmail**, based on main after the unified-Mail merge. Start screen selects iCloud or Gmail before showing provider-specific instructions and login. Gmail uses desktop OAuth with PKCE and a loopback callback, memory-only tokens, and the same Inbox UI for browsing, grouping, selection, unsubscribe, Trash, Undo, history and settings. No compose/send or permanent-delete endpoints. The gmail.modify permission is broader than the implemented features and technically permits sending.
+
+**[Пошаговая инструкция входа Gmail](GMAIL_SETUP.md)**. Enable Gmail API, create an External/Testing Desktop OAuth client, add your Gmail as a test user, upload the client JSON, and follow the Google sign-in link. START.bat installs the required Google libraries. This local desktop flow runs on the same computer as your browser.
 
 A local, bilingual tool for reviewing iCloud mail, unsubscribing from newsletters and moving selected messages to Trash.
-
-## Test build 3.6: unified Mail / Почта
-
-Test branch: `test/unified-mail`, based on the merged 3.5 inbox build in `fix/icloud-delete`.
-
-- One **Mail** page opens newest Inbox messages and switches to companies by message count, name or recent activity. All/Unread/Read filters and company/email/subject search apply to both views.
-- Open a message, then open its company to browse that company's emails. Back restores the parent search and page. Selection is shared between messages and companies; Select all covers matching results across pages and skips whitelist entries. Select blacklist also respects search/read filters and whitelist protection.
-- Delete, unsubscribe, or unsubscribe and delete use a frozen confirmation. A company with no explicit selection defaults to matching emails; an explicit override includes all company emails irrespective of read/search filters. Each detected mailing list and manual/automatic unsubscribe status appears in confirmation. Whitelist consent is checked again at execution. Undo and history reuse recorded moves.
-- Menu: Mail, Whitelist, Blacklist, Settings, Sign out. Settings contains language, persisted text size (14–24 px), action history and manual company grouping. Native light/dark themes and refresh-safe sign-in are preserved. A larger gap separates the version from the mail filters.
-- Inbox only, plain-text reading on demand via BODY.PEEK, no compose/send. Scans load all Inbox headers; partial old scans are identified until refreshed.
-
-**Как проверить:** GitHub Desktop → Fetch origin → Current branch → `test/unified-mail` → закрыть приложение и заново запустить `START.bat`. Версия **3.6.0-test**. Основные ветки не изменяются.
 
 ## English
 

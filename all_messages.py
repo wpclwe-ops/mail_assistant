@@ -24,11 +24,11 @@ def browse(messages, query="", read_filter="all", sort="newest"):
             key=lambda m: (
                 str(m.get(sort, "")).casefold(),
                 -m["received"],
-                -int(m["uid"]),
+                -service.uid_key(m["uid"]),
             ),
         )
     return sorted(
-        matches, key=lambda m: (m["received"], int(m["uid"])), reverse=sort != "oldest"
+        matches, key=lambda m: (m["received"], service.uid_key(m["uid"])), reverse=sort != "oldest"
     )
 
 

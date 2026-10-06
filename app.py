@@ -13,14 +13,16 @@ from storage import Store
 from session_store import COOKIE, SessionStore
 import mail_service as service
 import all_messages_ui
+import mail_provider
+import gmail_login_ui
 
 st.set_page_config(
-    page_title="iCloud Mail Assistant",
+    page_title="Mail Assistant",
     page_icon="📬",
     layout="wide",
     initial_sidebar_state="expanded",
 )
-VERSION = "3.6.0-test"
+VERSION = "3.7.0-test"
 ss = st.session_state
 preferences = Store()
 if "language" not in ss:
@@ -128,6 +130,20 @@ ERRORS = {
         "iCloud did not complete the command. Review history before retrying.",
     ),
 }
+
+ERRORS.update({
+    "gmail_config": ("Нужен JSON OAuth-клиента типа Desktop app из Google Cloud.", "Upload a Google Cloud Desktop app OAuth client JSON."),
+    "gmail_dependencies": ("Перезапусти START.bat: он установит библиотеки для Gmail.", "Restart START.bat to install Gmail dependencies."),
+    "gmail_auth": ("Не удалось завершить вход Google. Проверь настройку OAuth, включение Gmail API и тестового пользователя.", "Google sign-in failed. Check OAuth setup, Gmail API and test user."),
+    "gmail_denied": ("Доступ Google не разрешён. Можно попробовать снова.", "Google access was denied. You can retry."),
+    "gmail_scope": ("Нужен доступ к чтению и управлению Gmail. Разреши его в окне Google.", "Grant Gmail read/manage access in Google."),
+    "gmail_timeout": ("Время входа истекло. Нажми «Войти через Google» снова.", "Sign-in timed out. Try Sign in with Google again."),
+    "gmail_cancelled": ("Вход Gmail отменён.", "Gmail sign-in cancelled."),
+    "gmail_access": ("Google отклонил доступ. Выйди и войди снова; проверь Gmail API и разрешения.", "Google rejected access. Sign out and reauthorize; check API/scopes."),
+    "gmail_network": ("Нет ответа Gmail. Проверь интернет и историю перед повтором действия.", "Gmail did not respond. Check connection and history before retrying."),
+    "gmail_rate_limit": ("Достигнут лимит Google. Подожди и повтори; для действий сначала проверь историю.", "Google rate limit reached. Wait and retry; check action history first."),
+    "gmail_api": ("Gmail не выполнил запрос. Проверь историю перед повтором.", "Gmail request failed. Check history before retrying."),
+})
 
 
 def show_error(code, detail=None):
@@ -462,7 +478,7 @@ def execute_pending_request(store):
         )
     )
     status = st.status(
-        T("Подключение к iCloud…", "Connecting to iCloud…"),
+        T("Подключение к почте…", "Connecting to mail…"),
         state="running",
         expanded=True,
     )
@@ -470,7 +486,7 @@ def execute_pending_request(store):
 
     def execute_progress(stage, current, total):
         labels = {
-            "connect": T("Подключение к iCloud", "Connecting to iCloud"),
+            "connect": T("Подключение к почте", "Connecting to mail"),
             "unsubscribe": T(
                 "Отправка запросов на отписку",
                 "Sending unsubscribe requests",
@@ -488,7 +504,7 @@ def execute_pending_request(store):
             bar.progress(0, text=label_text)
 
     try:
-        result = service.execute(
+        result = mail_provider.execute(
             store,
             ss.password,
             request["preview"],
@@ -539,9 +555,9 @@ def execute_pending_request(store):
 
 header_left, header_right = st.columns([7.4, 2.6], vertical_alignment="top")
 with header_left:
-    st.title("ICLOUD MAIL ASSISTANT")
+    st.title("MAIL ASSISTANT")
     st.markdown(
-        f'<div class="build-label">TEST BUILD {VERSION} · test/unified-mail</div>',
+        f'<div class="build-label">TEST BUILD {VERSION} · test/gmail</div>',
         unsafe_allow_html=True,
     )
 with header_right:
@@ -588,7 +604,8 @@ def sidebar():
     busy = bool(ss.get("job") and not ss.job.done)
     with st.sidebar:
         st.subheader(T("Меню", "Menu"))
-        st.caption(ss.account)
+        st.caption(ss.account.removeprefix("gmail:"))
+        st.caption(mail_provider.provider_name(ss.get("password")))
         for key, labels in pages.items():
             st.button(
                 T(*labels),
@@ -658,10 +675,16 @@ if ss.get("job"):
             )
         )
 
+        if job.kind == "gmail_login" and ss.get("gmail_attempt"):
+            st.link_button(T("Открыть вход Google", "Open Google sign-in"), ss.gmail_attempt.url, type="primary")
+            st.caption(T("Войди в Google и разреши доступ. Затем вернись сюда. Ожидание — до 3 минут.", "Sign in to Google, grant access and return here. Timeout: 3 minutes."))
+            if st.button(T("Отменить вход Gmail", "Cancel Gmail sign-in"), key="gmail_cancel"):
+                ss.gmail_attempt.cancel()
+
         @st.fragment(run_every=0.5)
         def progress_view():
             stages = {
-                "connect": ("Подключение к iCloud", "Connecting to iCloud"),
+                "connect": ("Подключение к почте", "Connecting to mail"),
                 "scan": ("Сканирование заголовков", "Scanning headers"),
                 "analyse": ("Анализ отправителей", "Analysing senders"),
                 "prepare": (
@@ -675,6 +698,7 @@ if ss.get("job"):
                 "delete": ("Перемещение в Корзину", "Moving to Trash"),
                 "undo": ("Возврат писем", "Restoring messages"),
                 "read": ("Загрузка текста письма", "Loading message text"),
+                "gmail_auth": ("Ожидаю вход через Google", "Waiting for Google sign-in"),
             }
             with job.lock:
                 stage, current, total = job.stage, job.current, job.total
@@ -696,11 +720,20 @@ if ss.get("job"):
     if job.error:
         ss.last_error = job.error
         ss.last_error_detail = job.detail
+        if job.kind == "gmail_login":
+            ss.pop("gmail_attempt", None)
     elif job.kind == "login":
         ss.account = job.result
         ss.password = ss.pop("pending_password", "")
         ss.session_token = sessions.create(ss.account, ss.password)
         ss.pop("password_input", None)
+        st.rerun()
+    elif job.kind == "gmail_login":
+        ss.password = job.result
+        ss.account = "gmail:" + job.result.account
+        ss.session_token = sessions.create(ss.account, ss.password)
+        ss.pop("gmail_attempt", None)
+        ss.pop("gmail_client_upload", None)
         st.rerun()
     elif job.kind == "prepare":
         ss.preview = job.result
@@ -721,7 +754,7 @@ if ss.get("last_error"):
 
 if not ss.get("account"):
     with st.container(key="login_screen"):
-        st.subheader(T("Наведи порядок в почте iCloud", "Clean up your iCloud inbox"))
+        st.subheader(T("Наведи порядок в своей почте", "Clean up your inbox"))
         st.write(
             T(
                 "Находи рассылки, выбирай несколько компаний, отписывайся и переноси ненужные письма в Корзину. Перед удалением ты выбираешь конкретные письма.",
@@ -729,64 +762,75 @@ if not ss.get("account"):
             )
         )
 
-        st.markdown(
-            T(
-                "**1. Введи адрес почты iCloud.**",
-                "**1. Enter your iCloud email address.**",
+        choice = st.selectbox(
+            T("Выберите свою почту", "Choose your email provider"),
+            ["choose", "icloud", "gmail"], key="login_provider",
+            format_func=lambda v: {"choose": T("Выберите…", "Choose…"), "icloud": "iCloud", "gmail": "Gmail"}[v],
+        )
+        if choice == "icloud":
+            st.markdown(
+                T(
+                    "**1. Введи адрес почты iCloud.**",
+                    "**1. Enter your iCloud email address.**",
+                )
             )
-        )
-        account = st.text_input(
-            T("Email iCloud", "iCloud email"),
-            key="email_input",
-            placeholder="name@icloud.com",
-        )
+            account = st.text_input(
+                T("Email iCloud", "iCloud email"),
+                key="email_input",
+                placeholder="name@icloud.com",
+            )
 
-        st.markdown(
-            T(
-                "**2. Создай пароль приложения.**",
-                "**2. Create an app-specific password.**",
+            st.markdown(
+                T(
+                    "**2. Создай пароль приложения.**",
+                    "**2. Create an app-specific password.**",
+                )
             )
-        )
-        st.write(
-            T(
-                "В аккаунте Apple: «Вход и безопасность» → «Пароли приложений» → создать пароль, например для Mail Assistant. Для этого нужна двухфакторная аутентификация.",
-                "In your Apple Account: Sign-In and Security → App-Specific Passwords → generate a password, for example for Mail Assistant. Two-factor authentication is required.",
+            st.write(
+                T(
+                    "В аккаунте Apple: «Вход и безопасность» → «Пароли приложений» → создать пароль, например для Mail Assistant. Для этого нужна двухфакторная аутентификация.",
+                    "In your Apple Account: Sign-In and Security → App-Specific Passwords → generate a password, for example for Mail Assistant. Two-factor authentication is required.",
+                )
             )
-        )
-        st.link_button(
-            T("Открыть аккаунт Apple", "Open Apple Account"),
-            "https://account.apple.com/",
-        )
+            st.link_button(
+                T("Открыть аккаунт Apple", "Open Apple Account"),
+                "https://account.apple.com/",
+            )
 
-        st.markdown(
-            T(
-                "**3. Вставь пароль приложения и подключись.**",
-                "**3. Paste the app-specific password and connect.**",
+            st.markdown(
+                T(
+                    "**3. Вставь пароль приложения и подключись.**",
+                    "**3. Paste the app-specific password and connect.**",
+                )
             )
-        )
-        password = st.text_input(
-            T(
-                "Пароль приложения (не обычный пароль Apple)",
-                "App-specific password (not your regular Apple password)",
-            ),
-            type="password",
-            key="password_input",
-        )
-        st.caption(
-            T(
-                "Пароль хранится только в памяти приложения до выхода или перезапуска и не записывается на диск. История и заголовки писем хранятся локально.",
-                "Your password stays in app memory until you sign out or the app restarts, and is never written to disk. History and message headers are stored locally.",
+            password = st.text_input(
+                T(
+                    "Пароль приложения (не обычный пароль Apple)",
+                    "App-specific password (not your regular Apple password)",
+                ),
+                type="password",
+                key="password_input",
             )
-        )
+            st.caption(
+                T(
+                    "Пароль хранится только в памяти приложения до выхода или перезапуска и не записывается на диск. История и заголовки писем хранятся локально.",
+                    "Your password stays in app memory until you sign out or the app restarts, and is never written to disk. History and message headers are stored locally.",
+                )
+            )
 
-        if st.button(
-            T("Подключиться к iCloud", "Connect to iCloud"),
-            type="primary",
-            width="stretch",
-            disabled=not (account.strip() and password.strip()),
-        ):
-            ss.pending_password = password
-            start("login", authenticate, account.strip().lower(), password)
+            if st.button(
+                T("Подключиться к iCloud", "Connect to iCloud"),
+                type="primary",
+                width="stretch",
+                disabled=not (account.strip() and password.strip()),
+            ):
+                ss.pending_password = password
+                start("login", authenticate, account.strip().lower(), password)
+
+        elif choice == "gmail":
+            gmail_login_ui.render(start, T, show_error)
+        else:
+            st.info(T("Выбери iCloud или Gmail — появятся инструкция и вход.", "Choose iCloud or Gmail to see instructions and sign in."))
 
         with st.container(key="login_settings"):
             st.markdown(
